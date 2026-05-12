@@ -16,6 +16,26 @@ browser
   -> local Ollama qwen3-coder:30b
 ```
 
+## Quick Scripted Setup
+
+From the cloned repo root on the Spark:
+
+```bash
+./scripts/setup_nemoclaw_app_factory.sh
+```
+
+Useful overrides:
+
+```bash
+./scripts/setup_nemoclaw_app_factory.sh --sandbox app-factory-agent --model qwen3-coder:30b
+./scripts/setup_nemoclaw_app_factory.sh --host-port 7866
+./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
+./scripts/setup_nemoclaw_app_factory.sh --force-onboard
+```
+
+The remainder of this file shows what the script does and how to modify or
+debug each phase manually.
+
 ## Clean Existing State
 
 This keeps Ollama models, including `qwen3-coder:30b`, but removes the previous

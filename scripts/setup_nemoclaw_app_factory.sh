@@ -1,0 +1,359 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-app-factory-agent}"
+MODEL="${NEMOCLAW_MODEL:-qwen3-coder:30b}"
+GATEWAY="${OPENSHELL_GATEWAY:-nemoclaw}"
+HOST_BIND="${APP_FACTORY_BIND_HOST:-0.0.0.0}"
+HOST_PORT="${APP_FACTORY_HOST_PORT:-7866}"
+APP_PORT="${APP_FACTORY_APP_PORT:-7866}"
+APP_SANDBOX_DIR="${APP_FACTORY_SANDBOX_DIR:-/sandbox/openclaw-app-factory}"
+PULL_MODEL=1
+RUN_ONBOARD=1
+FORCE_ONBOARD=0
+START_FORWARD=1
+WAIT_SECONDS="${APP_FACTORY_READY_TIMEOUT:-900}"
+
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+Install/configure NemoClaw/OpenShell for the NemoClaw Game Factory demo, then
+run the App Factory inside the sandbox and expose it on the Spark host.
+
+Options:
+  --sandbox NAME       Sandbox name. Default: $SANDBOX_NAME
+  --model MODEL        Ollama model. Default: $MODEL
+  --host-port PORT     Spark host port. Default: $HOST_PORT
+  --app-port PORT      Sandbox app port. Default: $APP_PORT
+  --bind HOST          Host bind address. Default: $HOST_BIND
+  --gateway NAME       OpenShell gateway name. Default: $GATEWAY
+  --skip-model-pull    Do not pull the Ollama model if it is missing.
+  --skip-onboard       Do not run the NemoClaw installer/onboard step.
+  --force-onboard      Re-run NemoClaw onboarding even if the gateway exists.
+  --no-forward         Start the sandboxed app but do not expose a host port.
+  -h, --help           Show this help.
+
+Environment overrides:
+  NEMOCLAW_SANDBOX_NAME
+  NEMOCLAW_MODEL
+  OPENSHELL_GATEWAY
+  APP_FACTORY_HOST_PORT
+  APP_FACTORY_BIND_HOST
+  APP_FACTORY_READY_TIMEOUT
+EOF
+}
+
+log() {
+  printf '\n==> %s\n' "$*"
+}
+
+warn() {
+  printf 'Warning: %s\n' "$*" >&2
+}
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --sandbox)
+      SANDBOX_NAME="${2:?missing sandbox name}"
+      shift
+      ;;
+    --model)
+      MODEL="${2:?missing model}"
+      shift
+      ;;
+    --host-port)
+      HOST_PORT="${2:?missing host port}"
+      shift
+      ;;
+    --app-port)
+      APP_PORT="${2:?missing app port}"
+      shift
+      ;;
+    --bind)
+      HOST_BIND="${2:?missing bind address}"
+      shift
+      ;;
+    --gateway)
+      GATEWAY="${2:?missing gateway name}"
+      shift
+      ;;
+    --skip-model-pull)
+      PULL_MODEL=0
+      ;;
+    --skip-onboard)
+      RUN_ONBOARD=0
+      ;;
+    --force-onboard)
+      FORCE_ONBOARD=1
+      ;;
+    --no-forward)
+      START_FORWARD=0
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "Unknown option: $1"
+      ;;
+  esac
+  shift
+done
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+with_user_path() {
+  export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+}
+
+ollama_has_model() {
+  ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$MODEL"
+}
+
+latest_sandbox_image() {
+  docker images --format '{{.Repository}}:{{.Tag}}' \
+    | awk '/^openshell\/sandbox-from:/ {print; exit}'
+}
+
+sandbox_ready() {
+  openshell sandbox list -g "$GATEWAY" 2>/dev/null \
+    | awk -v name="$SANDBOX_NAME" '$1 == name && $0 ~ /Ready/ { found = 1 } END { exit found ? 0 : 1 }'
+}
+
+gateway_ready() {
+  with_user_path
+  command -v openshell >/dev/null 2>&1 || return 1
+  openshell status -g "$GATEWAY" >/dev/null 2>&1 || return 1
+  openshell provider list -g "$GATEWAY" 2>/dev/null | grep -q 'ollama-local'
+}
+
+wait_for_sandbox() {
+  local elapsed=0
+  while [ "$elapsed" -lt "$WAIT_SECONDS" ]; do
+    if sandbox_ready; then
+      return 0
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  return 1
+}
+
+find_container() {
+  docker ps --format '{{.Names}}' \
+    | grep -E "^openshell-${SANDBOX_NAME}-" \
+    | head -1
+}
+
+stop_forward() {
+  local pid_file="/tmp/app_factory_forward_${HOST_PORT}.pid"
+
+  if command -v openshell >/dev/null 2>&1; then
+    openshell forward stop -g "$GATEWAY" "$HOST_PORT" >/dev/null 2>&1 || true
+  fi
+
+  if [ -f "$pid_file" ]; then
+    kill "$(cat "$pid_file")" >/dev/null 2>&1 || true
+    rm -f "$pid_file"
+  fi
+
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "forward_port.py .*--bind-port ${HOST_PORT}" >/dev/null 2>&1 || true
+  fi
+}
+
+preflight() {
+  log "Checking prerequisites"
+  need_cmd curl
+  need_cmd docker
+  need_cmd python3
+  need_cmd tar
+  need_cmd awk
+  need_cmd grep
+  need_cmd ollama
+}
+
+ensure_model() {
+  log "Checking Ollama model: $MODEL"
+  if ollama_has_model; then
+    ollama list | grep -F "$MODEL" || true
+    return 0
+  fi
+
+  if [ "$PULL_MODEL" -ne 1 ]; then
+    die "Ollama model '$MODEL' is missing. Run: ollama pull $MODEL"
+  fi
+
+  ollama pull "$MODEL"
+}
+
+run_onboard() {
+  if [ "$RUN_ONBOARD" -ne 1 ]; then
+    log "Skipping NemoClaw onboarding"
+    return 0
+  fi
+
+  if [ "$FORCE_ONBOARD" -ne 1 ] && gateway_ready; then
+    log "Reusing existing NemoClaw/OpenShell gateway: $GATEWAY"
+    return 0
+  fi
+
+  log "Installing/configuring NemoClaw for local Ollama inference"
+  export NEMOCLAW_SANDBOX_NAME="$SANDBOX_NAME"
+  export NEMOCLAW_PROVIDER=ollama
+  export NEMOCLAW_MODEL="$MODEL"
+  export NEMOCLAW_POLICY_TIER="${NEMOCLAW_POLICY_TIER:-balanced}"
+  export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
+  export NEMOCLAW_NON_INTERACTIVE=1
+  export NEMOCLAW_YES=1
+  export NEMOCLAW_LOCAL_INFERENCE_TIMEOUT="${NEMOCLAW_LOCAL_INFERENCE_TIMEOUT:-300}"
+  export NEMOCLAW_SANDBOX_READY_TIMEOUT="${NEMOCLAW_SANDBOX_READY_TIMEOUT:-900}"
+
+  curl -fsSL https://www.nvidia.com/nemoclaw.sh -o /tmp/nemoclaw.sh
+
+  set +e
+  bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
+  local status=$?
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    warn "NemoClaw onboarding exited with status $status."
+    warn "Continuing because gateway/inference setup may have completed and the sandbox can be created from the fresh image."
+  fi
+}
+
+ensure_sandbox() {
+  with_user_path
+  need_cmd openshell
+
+  if sandbox_ready; then
+    log "Reusing ready sandbox: $SANDBOX_NAME"
+    return 0
+  fi
+
+  local image
+  image="$(latest_sandbox_image)"
+  [ -n "$image" ] || die "No openshell/sandbox-from image found. Re-run without --skip-onboard."
+
+  log "Creating OpenShell sandbox: $SANDBOX_NAME"
+  openshell sandbox delete -g "$GATEWAY" "$SANDBOX_NAME" >/dev/null 2>&1 || true
+
+  nohup openshell sandbox create -g "$GATEWAY" \
+    --name "$SANDBOX_NAME" \
+    --from "$image" \
+    --provider ollama-local \
+    --gpu \
+    -- /usr/bin/env \
+      CHAT_UI_URL=http://127.0.0.1:18789 \
+      NEMOCLAW_DASHBOARD_PORT=18789 \
+      /usr/local/bin/nemoclaw-start \
+    >/tmp/app-factory-sandbox.log 2>&1 &
+
+  if ! wait_for_sandbox; then
+    tail -80 /tmp/app-factory-sandbox.log >&2 || true
+    die "Sandbox '$SANDBOX_NAME' did not become Ready within ${WAIT_SECONDS}s."
+  fi
+
+  openshell sandbox list -g "$GATEWAY"
+}
+
+install_app() {
+  local container
+  container="$(find_container)"
+  [ -n "$container" ] || die "Could not find running sandbox container for '$SANDBOX_NAME'."
+
+  log "Installing App Factory into $container:$APP_SANDBOX_DIR"
+  docker exec "$container" rm -rf "$APP_SANDBOX_DIR"
+  docker exec "$container" mkdir -p "$APP_SANDBOX_DIR"
+
+  tar \
+    --exclude='.git' \
+    --exclude='runs' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    -C "$APP_DIR" \
+    -cf - . \
+    | docker exec -i "$container" tar -xf - -C "$APP_SANDBOX_DIR"
+
+  docker exec "$container" chown -R sandbox:sandbox "$APP_SANDBOX_DIR"
+  docker exec "$container" python3 -m py_compile "$APP_SANDBOX_DIR/server.py"
+
+  log "Starting App Factory inside the sandbox"
+  docker exec "$container" pkill -f "python3 server.py --host 0.0.0.0 --port ${APP_PORT}" >/dev/null 2>&1 || true
+  docker exec -u sandbox -w "$APP_SANDBOX_DIR" \
+    -e APP_FACTORY_PROVIDER=openshell \
+    -e APP_FACTORY_MODEL="$MODEL" \
+    -e APP_FACTORY_OPENAI_BASE_URL=https://inference.local/v1 \
+    -e APP_FACTORY_OPENAI_INSECURE=1 \
+    "$container" \
+    /bin/sh -c "nohup python3 server.py --host 0.0.0.0 --port ${APP_PORT} > app-factory.log 2>&1 &"
+
+  docker exec "$container" curl -sS --max-time 10 "http://127.0.0.1:${APP_PORT}/api/models" >/dev/null
+}
+
+start_forward() {
+  if [ "$START_FORWARD" -ne 1 ]; then
+    log "Skipping host port forward"
+    return 0
+  fi
+
+  local container container_ip pid_file
+  container="$(find_container)"
+  [ -n "$container" ] || die "Could not find running sandbox container for '$SANDBOX_NAME'."
+
+  container_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container")"
+  [ -n "$container_ip" ] || die "Could not resolve sandbox container IP."
+
+  log "Forwarding ${HOST_BIND}:${HOST_PORT} -> ${container_ip}:${APP_PORT}"
+  stop_forward
+
+  pid_file="/tmp/app_factory_forward_${HOST_PORT}.pid"
+  nohup python3 "$APP_DIR/scripts/forward_port.py" \
+    --bind-host "$HOST_BIND" \
+    --bind-port "$HOST_PORT" \
+    --target-host "$container_ip" \
+    --target-port "$APP_PORT" \
+    >/tmp/app_factory_forward.log 2>&1 &
+  echo "$!" >"$pid_file"
+
+  sleep 1
+  curl -sS --max-time 10 "http://127.0.0.1:${HOST_PORT}/api/models" >/dev/null
+}
+
+print_summary() {
+  local host_ip
+  host_ip="${APP_FACTORY_PUBLIC_HOST:-}"
+  if [ -z "$host_ip" ]; then
+    host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  host_ip="${host_ip:-127.0.0.1}"
+
+  log "Ready"
+  printf 'Open: http://%s:%s\n' "$host_ip" "$HOST_PORT"
+  printf 'Sandbox: %s\n' "$SANDBOX_NAME"
+  printf 'Model: %s\n' "$MODEL"
+  printf 'Provider: NemoClaw/OpenShell managed inference\n'
+}
+
+main() {
+  preflight
+  ensure_model
+  run_onboard
+  ensure_sandbox
+  install_app
+  start_forward
+  print_summary
+}
+
+main "$@"

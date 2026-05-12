@@ -34,7 +34,38 @@ browser
 - Ollama with `qwen3-coder:30b`
 - NemoClaw/OpenShell installed by the setup flow below
 
-## Install Ollama
+## Quick Start
+
+Run this on the Spark. It installs/configures NemoClaw/OpenShell, creates or
+reuses the sandbox, copies this app into `/sandbox/openclaw-app-factory`, starts
+the app in the sandbox, and forwards Spark port `7866` to the sandboxed server.
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+sudo systemctl enable --now ollama
+ollama pull qwen3-coder:30b
+
+git clone https://github.com/nv-drollins/nemoclaw-gamfacotry.git
+cd nemoclaw-gamfacotry
+
+./scripts/setup_nemoclaw_app_factory.sh
+```
+
+Open:
+
+```text
+http://<spark-ip>:7866
+```
+
+Common overrides:
+
+```bash
+./scripts/setup_nemoclaw_app_factory.sh --model qwen3-coder:30b --host-port 7866
+./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
+./scripts/setup_nemoclaw_app_factory.sh --force-onboard
+```
+
+## Ollama Details
 
 On Ubuntu or the Spark host:
 
@@ -93,9 +124,11 @@ Open:
 http://<spark-ip>:7866
 ```
 
-## NemoClaw/OpenShell Deployment
+## Manual NemoClaw/OpenShell Deployment
 
-The demo-ready path runs the App Factory code inside the OpenShell sandbox. The
+The quick-start script wraps these steps. Use the manual flow when you want to
+modify the installation, debug the sandbox, or run each phase by hand. The
+demo-ready path runs the App Factory code inside the OpenShell sandbox. The
 Spark host only forwards the browser port.
 
 Clone the repo on the Spark:
