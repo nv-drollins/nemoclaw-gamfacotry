@@ -44,6 +44,7 @@ async function api(path, options = {}) {
 
 function setBusy(isBusy) {
   els.start.disabled = isBusy;
+  els.reset.disabled = isBusy;
   els.prompt.disabled = isBusy;
   els.model.disabled = isBusy;
   els.refine.disabled = isBusy;

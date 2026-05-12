@@ -34,19 +34,20 @@ OPENAI_BASE_URL = os.environ.get("APP_FACTORY_OPENAI_BASE_URL", "https://inferen
 OPENAI_API_KEY = os.environ.get("APP_FACTORY_OPENAI_API_KEY", "unused")
 OPENAI_INSECURE = os.environ.get("APP_FACTORY_OPENAI_INSECURE", "1").lower() in {"1", "true", "yes", "on"}
 DEFAULT_MODEL = os.environ.get("APP_FACTORY_MODEL", "qwen3-coder:30b")
+MODEL_TIMEOUT = int(os.environ.get("APP_FACTORY_MODEL_TIMEOUT", "360"))
+MODEL_MAX_TOKENS = int(os.environ.get("APP_FACTORY_MAX_TOKENS", "6000"))
 DEFAULT_PROMPT = (
     "Build a simple web based game where a rover collects crystals, avoids hazards, "
     "and shows score, timer, and restart controls."
 )
 RANDOM_GAME_PROMPTS = [
-    DEFAULT_PROMPT,
     "Build a dark-mode asteroid dodger where a tiny ship survives for 60 seconds, collects green energy cells, and pauses with an inline final score when time ends.",
     "Build a simple memory card matching game with twelve cards, a move counter, a restart button, and a compact victory summary.",
     "Build a keyboard-controlled maze game where a robot finds the exit, collects three keys, avoids patrol drones, and shows progress inline.",
     "Build a one-screen reaction game where targets light up in random grid cells, the player clicks them for points, and the game pauses when the timer ends.",
     "Build a falling-block catcher game where a basket catches green tokens, avoids gray hazards, tracks lives and score, and has restart controls.",
     "Build a simple tower defense micro-game where waves move across lanes, the player places limited green turrets, and the round summary appears inline.",
-    "Build a space mining game where a rover mines ore nodes before oxygen runs out, with an oxygen meter, score, and restart button.",
+    "Build a space mining game where a drone mines ore nodes before oxygen runs out, with an oxygen meter, score, and restart button.",
     "Build a typing speed game where words appear one at a time, correct entries add score, mistakes reduce time, and results show inline.",
     "Build a puzzle slider game with numbered tiles, move counter, shuffle button, and win state without popups.",
     "Build a rhythm tap game where beats cross a target line, the player presses space to score, and the app shows combo and final score inline.",
@@ -58,6 +59,35 @@ RANDOM_GAME_PROMPTS = [
     "Build a bug-squash arcade game where bugs appear around the screen, clicks score points, misses reduce energy, and the result displays inline.",
     "Build a compact chess-knight puzzle where the player moves a knight to collect targets on a board with move limits.",
 ]
+
+
+def configure_managed_inference_proxy() -> None:
+    """Let Python urllib reach OpenShell's managed inference route from Docker exec sessions."""
+    if MODEL_PROVIDER not in {"openshell", "openai", "nemoclaw"}:
+        return
+    if "inference.local" not in OPENAI_BASE_URL:
+        return
+    if os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"):
+        return
+
+    proxy_host = os.environ.get("NEMOCLAW_PROXY_HOST")
+    proxy_port = os.environ.get("NEMOCLAW_PROXY_PORT")
+    if not proxy_host or not proxy_port:
+        return
+
+    proxy_url = f"http://{proxy_host}:{proxy_port}"
+    os.environ.setdefault("HTTP_PROXY", proxy_url)
+    os.environ.setdefault("HTTPS_PROXY", proxy_url)
+    os.environ.setdefault("http_proxy", proxy_url)
+    os.environ.setdefault("https_proxy", proxy_url)
+    no_proxy = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "localhost,127.0.0.1,::1"
+    if proxy_host not in no_proxy.split(","):
+        no_proxy = f"{no_proxy},{proxy_host}"
+    os.environ.setdefault("NO_PROXY", no_proxy)
+    os.environ.setdefault("no_proxy", no_proxy)
+
+
+configure_managed_inference_proxy()
 
 
 def utc_now() -> str:
@@ -121,6 +151,38 @@ def clean_plain_text(value: str, limit: int) -> str:
     cleaned = re.sub(r"[*_`]+", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned[:limit]
+
+
+def fallback_title_from_prompt(user_prompt: str) -> str:
+    prompt = user_prompt.lower()
+    candidates = [
+        ("asteroid", "Asteroid Dodger"),
+        ("memory", "Memory Match"),
+        ("maze", "Robot Maze"),
+        ("reaction", "Reaction Grid"),
+        ("catcher", "Token Catcher"),
+        ("tower defense", "Micro Tower Defense"),
+        ("space mining", "Space Mining Run"),
+        ("typing", "Typing Sprint"),
+        ("slider", "Puzzle Slider"),
+        ("rhythm", "Rhythm Tap"),
+        ("stealth", "Stealth Grid"),
+        ("resource", "Power Balance"),
+        ("pinball", "Pinball Clicker"),
+        ("simon", "Color Sequence"),
+        ("lane-switch", "Lane Switch Runner"),
+        ("runner", "Lane Switch Runner"),
+        ("bug", "Bug Squash Arcade"),
+        ("chess", "Knight Puzzle"),
+        ("knight", "Knight Puzzle"),
+        ("rover", "Rover Crystal Run"),
+    ]
+    for needle, title in candidates:
+        if needle in prompt:
+            return title
+    if "game" in prompt:
+        return "Generated Game"
+    return "Generated Web App"
 
 
 APP_DIALOG_GUARD = """<script>
@@ -245,14 +307,14 @@ def list_models() -> dict[str, Any]:
     return list_ollama_models()
 
 
-def call_ollama(model: str, prompt: str, timeout: int = 120) -> dict[str, Any]:
+def call_ollama(model: str, prompt: str, timeout: int = MODEL_TIMEOUT) -> dict[str, Any]:
     started = time.monotonic()
     payload = json.dumps(
         {
             "model": model,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": 0.25, "num_ctx": 12288, "num_predict": 9000},
+            "options": {"temperature": 0.25, "num_ctx": 12288, "num_predict": MODEL_MAX_TOKENS},
         }
     ).encode("utf-8")
     request = urllib.request.Request(
@@ -283,7 +345,7 @@ def call_ollama(model: str, prompt: str, timeout: int = 120) -> dict[str, Any]:
         }
 
 
-def call_openai_compatible(model: str, prompt: str, timeout: int = 180) -> dict[str, Any]:
+def call_openai_compatible(model: str, prompt: str, timeout: int = MODEL_TIMEOUT) -> dict[str, Any]:
     started = time.monotonic()
     payload = json.dumps(
         {
@@ -291,7 +353,7 @@ def call_openai_compatible(model: str, prompt: str, timeout: int = 180) -> dict[
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "temperature": 0.25,
-            "max_tokens": 9000,
+            "max_tokens": MODEL_MAX_TOKENS,
         }
     ).encode("utf-8")
     request = urllib.request.Request(
@@ -328,7 +390,7 @@ def call_openai_compatible(model: str, prompt: str, timeout: int = 180) -> dict[
         }
 
 
-def call_model(model: str, prompt: str, timeout: int = 180) -> dict[str, Any]:
+def call_model(model: str, prompt: str, timeout: int = MODEL_TIMEOUT) -> dict[str, Any]:
     if MODEL_PROVIDER in {"openshell", "openai", "nemoclaw"}:
         return call_openai_compatible(model, prompt, timeout=timeout)
     return call_ollama(model, prompt, timeout=timeout)
@@ -749,7 +811,7 @@ def parse_builder_response(
             summary = previous_summary or "Preserved the last deployed app because the refinement response was incomplete."
             app_html = previous_html
         else:
-            title = "Rover Crystal Run" if "game" in user_prompt.lower() else "Generated Web App"
+            title = fallback_title_from_prompt(user_prompt)
             summary = "Fallback app generated locally because the model response was unavailable or incomplete."
             app_html = fallback_app_html(user_prompt, title, response.get("error", ""))
     return {
@@ -840,13 +902,23 @@ def run_generation(user_prompt: str, model: str, refinement: str = "", smoke_tes
             STATE.set_flow("reviewer", "active")
             STATE.phase = "reviewer"
             STATE.log("reviewer", "Reviewer started", "Reviewing layout, controls, mobile behavior, and deployability.")
-        reviewer_result = call_model(model, reviewer_prompt(user_prompt, builder["title"], builder["summary"], builder["html"]))
-        with STATE.lock:
-            STATE.metrics["modelCalls"] += 1
-            STATE.model_status = reviewer_result["provider"]
-            if reviewer_result["ok"]:
-                STATE.log("reviewer", "Reviewer completed", f"Model route responded in {reviewer_result['elapsed']}s.")
-            else:
+        if builder_result["ok"]:
+            reviewer_result = call_model(model, reviewer_prompt(user_prompt, builder["title"], builder["summary"], builder["html"]))
+            with STATE.lock:
+                STATE.metrics["modelCalls"] += 1
+                STATE.model_status = reviewer_result["provider"]
+                if reviewer_result["ok"]:
+                    STATE.log("reviewer", "Reviewer completed", f"Model route responded in {reviewer_result['elapsed']}s.")
+                else:
+                    STATE.log("reviewer", "Reviewer fallback", reviewer_result["error"])
+        else:
+            reviewer_result = {
+                "ok": False,
+                "provider": builder_result["provider"],
+                "text": "",
+                "error": "Skipped model review because the builder did not return model output.",
+            }
+            with STATE.lock:
                 STATE.log("reviewer", "Reviewer fallback", reviewer_result["error"])
         reviewed = parse_reviewer_response(user_prompt, builder, reviewer_result)
         if not smoke_test:
@@ -933,7 +1005,7 @@ class Handler(BaseHTTPRequestHandler):
                 if STATE.worker and STATE.worker.is_alive():
                     self.send_json({"ok": False, "message": "Generation is already running."}, status=409)
                     return
-                STATE.reset()
+                STATE.reset(prompt=prompt)
                 STATE.worker = threading.Thread(target=run_generation, args=(prompt, model), daemon=True)
                 STATE.worker.start()
             self.send_json({"ok": True})
@@ -967,6 +1039,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"ok": True})
             return
         if parsed.path == "/api/reset":
+            with STATE.lock:
+                if STATE.worker and STATE.worker.is_alive():
+                    self.send_json({"ok": False, "message": "Generation is already running."}, status=409)
+                    return
             prompt = random.choice(RANDOM_GAME_PROMPTS)
             STATE.reset(prompt=prompt)
             self.send_json({"ok": True, "prompt": prompt})

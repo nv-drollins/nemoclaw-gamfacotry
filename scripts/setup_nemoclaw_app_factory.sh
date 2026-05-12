@@ -405,6 +405,14 @@ install_app() {
     -e APP_FACTORY_MODEL="$MODEL" \
     -e APP_FACTORY_OPENAI_BASE_URL=https://inference.local/v1 \
     -e APP_FACTORY_OPENAI_INSECURE=1 \
+    -e APP_FACTORY_MODEL_TIMEOUT="${APP_FACTORY_MODEL_TIMEOUT:-360}" \
+    -e APP_FACTORY_MAX_TOKENS="${APP_FACTORY_MAX_TOKENS:-6000}" \
+    -e HTTP_PROXY="http://10.200.0.1:3128" \
+    -e HTTPS_PROXY="http://10.200.0.1:3128" \
+    -e http_proxy="http://10.200.0.1:3128" \
+    -e https_proxy="http://10.200.0.1:3128" \
+    -e NO_PROXY="localhost,127.0.0.1,::1,10.200.0.1" \
+    -e no_proxy="localhost,127.0.0.1,::1,10.200.0.1" \
     "$container" \
     /bin/sh -c "nohup python3 server.py --host 0.0.0.0 --port ${APP_PORT} > app-factory.log 2>&1 &"
 
