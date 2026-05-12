@@ -11,6 +11,7 @@ HOST_BIND="${APP_FACTORY_BIND_HOST:-0.0.0.0}"
 HOST_PORT="${APP_FACTORY_HOST_PORT:-7866}"
 APP_PORT="${APP_FACTORY_APP_PORT:-7866}"
 APP_SANDBOX_DIR="${APP_FACTORY_SANDBOX_DIR:-/sandbox/openclaw-app-factory}"
+INSTALL_OLLAMA="${APP_FACTORY_INSTALL_OLLAMA:-1}"
 PULL_MODEL=1
 RUN_ONBOARD=1
 FORCE_ONBOARD=0
@@ -31,6 +32,8 @@ Options:
   --app-port PORT      Sandbox app port. Default: $APP_PORT
   --bind HOST          Host bind address. Default: $HOST_BIND
   --gateway NAME       OpenShell gateway name. Default: $GATEWAY
+  --skip-ollama-install
+                       Do not install Ollama if the ollama command is missing.
   --skip-model-pull    Do not pull the Ollama model if it is missing.
   --skip-onboard       Do not run the NemoClaw installer/onboard step.
   --force-onboard      Re-run NemoClaw onboarding even if the gateway exists.
@@ -43,6 +46,7 @@ Environment overrides:
   OPENSHELL_GATEWAY
   APP_FACTORY_HOST_PORT
   APP_FACTORY_BIND_HOST
+  APP_FACTORY_INSTALL_OLLAMA
   APP_FACTORY_READY_TIMEOUT
 EOF
 }
@@ -86,6 +90,9 @@ while [ "$#" -gt 0 ]; do
       GATEWAY="${2:?missing gateway name}"
       shift
       ;;
+    --skip-ollama-install)
+      INSTALL_OLLAMA=0
+      ;;
     --skip-model-pull)
       PULL_MODEL=0
       ;;
@@ -115,6 +122,19 @@ need_cmd() {
 
 with_user_path() {
   export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+}
+
+ollama_base_url() {
+  local value="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+  case "$value" in
+    http://*|https://*) ;;
+    *) value="http://$value" ;;
+  esac
+  printf '%s\n' "${value%/}"
+}
+
+ollama_api_ready() {
+  curl -fsS --max-time 5 "$(ollama_base_url)/api/tags" >/dev/null 2>&1
 }
 
 ollama_has_model() {
@@ -181,7 +201,57 @@ preflight() {
   need_cmd tar
   need_cmd awk
   need_cmd grep
-  need_cmd ollama
+}
+
+ensure_ollama_installed() {
+  log "Checking Ollama installation"
+  if command -v ollama >/dev/null 2>&1; then
+    ollama --version 2>/dev/null || true
+    return 0
+  fi
+
+  if [ "$INSTALL_OLLAMA" = "0" ]; then
+    die "Ollama is not installed. Install it or rerun without --skip-ollama-install."
+  fi
+
+  log "Installing Ollama"
+  curl -fsSL https://ollama.com/install.sh | sh
+  hash -r
+  command -v ollama >/dev/null 2>&1 || die "Ollama installer completed, but ollama is still not on PATH."
+}
+
+ensure_ollama_running() {
+  if ollama_api_ready; then
+    log "Ollama API is already reachable at $(ollama_base_url)"
+    return 0
+  fi
+
+  log "Starting Ollama"
+  if command -v systemctl >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+      systemctl enable --now ollama >/dev/null 2>&1 || systemctl restart ollama >/dev/null 2>&1 || true
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo systemctl enable --now ollama >/dev/null 2>&1 || sudo systemctl restart ollama >/dev/null 2>&1 || true
+    fi
+  fi
+
+  if ! ollama_api_ready && command -v pgrep >/dev/null 2>&1 && ! pgrep -f 'ollama serve' >/dev/null 2>&1; then
+    nohup ollama serve >/tmp/ollama-serve.log 2>&1 &
+  fi
+
+  for _ in $(seq 1 30); do
+    if ollama_api_ready; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  die "Ollama is installed, but the API is not reachable at $(ollama_base_url). Check: systemctl status ollama"
+}
+
+ensure_ollama() {
+  ensure_ollama_installed
+  ensure_ollama_running
 }
 
 ensure_model() {
@@ -348,6 +418,7 @@ print_summary() {
 
 main() {
   preflight
+  ensure_ollama
   ensure_model
   run_onboard
   ensure_sandbox

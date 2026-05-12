@@ -31,20 +31,18 @@ browser
 - NVIDIA Spark or Linux host with Docker
 - NVIDIA driver and container GPU support
 - Python 3.11 or newer inside the sandbox
-- Ollama with `qwen3-coder:30b`
+- Ollama with `qwen3-coder:30b`, or network access so the setup script can install/pull it
 - NemoClaw/OpenShell installed by the setup flow below
 
 ## Quick Start
 
-Run this on the Spark. It installs/configures NemoClaw/OpenShell, creates or
-reuses the sandbox, copies this app into `/sandbox/openclaw-app-factory`, starts
-the app in the sandbox, and forwards Spark port `7866` to the sandboxed server.
+Run this on the Spark. The setup script checks for Ollama, installs it if it is
+missing, starts it if needed, pulls `qwen3-coder:30b` if needed,
+installs/configures NemoClaw/OpenShell, creates or reuses the sandbox, copies
+this app into `/sandbox/openclaw-app-factory`, starts the app in the sandbox, and
+forwards Spark port `7866` to the sandboxed server.
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
-sudo systemctl enable --now ollama
-ollama pull qwen3-coder:30b
-
 git clone https://github.com/nv-drollins/nemoclaw-gamfacotry.git
 cd nemoclaw-gamfacotry
 
@@ -61,11 +59,15 @@ Common overrides:
 
 ```bash
 ./scripts/setup_nemoclaw_app_factory.sh --model qwen3-coder:30b --host-port 7866
+./scripts/setup_nemoclaw_app_factory.sh --skip-ollama-install
 ./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
 
 ## Ollama Details
+
+The quick-start script handles this automatically. Use these commands when you
+want to install or manage Ollama manually.
 
 On Ubuntu or the Spark host:
 

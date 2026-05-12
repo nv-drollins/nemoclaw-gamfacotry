@@ -24,11 +24,15 @@ From the cloned repo root on the Spark:
 ./scripts/setup_nemoclaw_app_factory.sh
 ```
 
+The script checks for Ollama, installs it when missing, starts it when needed,
+pulls the configured model if needed, then performs the NemoClaw/OpenShell setup.
+
 Useful overrides:
 
 ```bash
 ./scripts/setup_nemoclaw_app_factory.sh --sandbox app-factory-agent --model qwen3-coder:30b
 ./scripts/setup_nemoclaw_app_factory.sh --host-port 7866
+./scripts/setup_nemoclaw_app_factory.sh --skip-ollama-install
 ./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
