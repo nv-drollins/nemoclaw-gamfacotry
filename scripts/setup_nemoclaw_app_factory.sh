@@ -242,6 +242,7 @@ preflight() {
   need_cmd docker
   need_cmd python3
   need_cmd tar
+  need_cmd zstd
   need_cmd awk
   need_cmd grep
 }
@@ -268,11 +269,10 @@ ensure_ollama_installed() {
     die "Ollama is not installed. Install it or rerun without --skip-ollama-install."
   fi
 
-  log "Installing Ollama"
-  curl -fsSL https://ollama.com/install.sh | sh
+  log "Installing pinned Ollama $OLLAMA_VERSION"
+  install_pinned_ollama
   hash -r
   command -v ollama >/dev/null 2>&1 || die "Ollama installer completed, but ollama is still not on PATH."
-  install_pinned_ollama
 }
 
 install_pinned_ollama() {
@@ -308,9 +308,28 @@ install_pinned_ollama() {
   fi
   run_as_root tar --zstd -xf "$archive" -C /usr/local
   run_as_root chmod -R a+rX /usr/local/lib/ollama
+  run_as_root useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama >/dev/null 2>&1 || true
+  run_as_root usermod -a -G video,render ollama >/dev/null 2>&1 || true
+  run_as_root tee /etc/systemd/system/ollama.service >/dev/null <<'EOF'
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+Environment="PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=default.target
+EOF
 
   if command -v systemctl >/dev/null 2>&1; then
-    run_as_root systemctl start ollama >/dev/null 2>&1 || true
+    run_as_root systemctl daemon-reload >/dev/null 2>&1 || true
+    run_as_root systemctl enable --now ollama >/dev/null 2>&1 || true
   fi
 }
 

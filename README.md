@@ -94,10 +94,34 @@ On Ubuntu or the Spark host, the demo currently pins Ollama to `0.22.1` because
 newer `0.23.x` builds have been observed to fall back to CPU-only execution on
 this Spark GB10 setup.
 
-Generic Ollama install:
+Pinned Ollama install (**use `0.22.1` on DGX Spark / GB10**):
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+OLLAMA_VERSION=0.22.1
+OLLAMA_ARCH="$(case "$(uname -m)" in aarch64|arm64) echo arm64 ;; x86_64|amd64) echo amd64 ;; *) uname -m ;; esac)"
+curl -fL --show-error -o "/tmp/ollama-linux-${OLLAMA_ARCH}.tar.zst" \
+  "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-${OLLAMA_ARCH}.tar.zst"
+sudo useradd -r -s /bin/false -U -m -d /usr/share/ollama ollama 2>/dev/null || true
+sudo usermod -a -G video,render ollama 2>/dev/null || true
+sudo tar --zstd -xf "/tmp/ollama-linux-${OLLAMA_ARCH}.tar.zst" -C /usr/local
+sudo chmod -R a+rX /usr/local/lib/ollama
+sudo tee /etc/systemd/system/ollama.service >/dev/null <<'EOF'
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/ollama serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+Environment="PATH=/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=default.target
+EOF
+sudo systemctl daemon-reload
 sudo systemctl enable --now ollama
 ```
 
