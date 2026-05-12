@@ -65,6 +65,19 @@ Common overrides:
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
 
+Stop or restart the demo after it is installed:
+
+```bash
+./stop.sh
+./restart.sh
+```
+
+For a full sandbox tear-down:
+
+```bash
+./stop.sh --delete-sandbox
+```
+
 ## Ollama Details
 
 The quick-start script handles this automatically. Use these commands when you
