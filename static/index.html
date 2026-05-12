@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenClaw App Factory</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="left">
+        <header>
+          <p class="eyebrow">NemoClaw / OpenClaw style</p>
+          <h1>App Factory</h1>
+        </header>
+
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" rows="8">Build a simple web based game where a rover collects crystals, avoids hazards, and shows score, timer, and restart controls.</textarea>
+
+        <label for="model">Local model</label>
+        <select id="model">
+          <option value="qwen3-coder:30b">qwen3-coder:30b</option>
+        </select>
+        <p id="modelStatus" class="muted">Checking local models...</p>
+
+        <div class="actions">
+          <button id="start" class="primary">Generate App</button>
+          <button id="reset">Random Game</button>
+        </div>
+
+        <section class="flow" aria-label="Agent flow">
+          <div data-step="builder"><strong>Builder</strong><span>queued</span></div>
+          <div data-step="reviewer"><strong>Reviewer</strong><span>queued</span></div>
+          <div data-step="deployer"><strong>Deployer</strong><span>queued</span></div>
+          <div data-step="human"><strong>Human</strong><span>queued</span></div>
+        </section>
+
+        <section id="humanPanel" class="human hidden">
+          <h2>Human Check</h2>
+          <textarea id="feedback" rows="4" placeholder="Add refinement notes, or approve the current app."></textarea>
+          <div class="actions">
+            <button id="approve" class="primary">Approve Final</button>
+            <button id="refine">Refine</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="right">
+        <div class="previewHeader">
+          <div>
+            <p id="status" class="eyebrow">idle</p>
+            <h2 id="title">Generated app preview</h2>
+          </div>
+          <a id="openResult" class="hidden" target="_blank" rel="noreferrer">Open</a>
+        </div>
+        <div id="emptyPreview" class="empty">The generated application will appear here.</div>
+        <iframe id="preview" class="hidden" title="Generated application" sandbox="allow-scripts"></iframe>
+      </section>
+
+      <section class="bottom">
+        <article>
+          <h2>Review Notes</h2>
+          <ul id="reviewNotes"></ul>
+        </article>
+        <article>
+          <h2>Skill Memory</h2>
+          <pre id="skillMd">No skill generated yet.</pre>
+        </article>
+        <article>
+          <h2>Run Log</h2>
+          <div id="events" class="events"></div>
+        </article>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
