@@ -59,6 +59,7 @@ Common overrides:
 
 ```bash
 ./scripts/setup_nemoclaw_app_factory.sh --model qwen3-coder:30b --host-port 7866
+./scripts/setup_nemoclaw_app_factory.sh --onboard-timeout 300
 ./scripts/setup_nemoclaw_app_factory.sh --skip-ollama-install
 ./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
@@ -160,7 +161,8 @@ bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fr
 If the onboarding flow creates the sandbox successfully, continue to "Run The
 App In The Sandbox" below. On the validated Spark build, the gateway and
 inference setup completed, but sandbox creation needed the absolute startup
-path workaround below.
+path workaround below. The quick-start script caps the NemoClaw onboarding wait
+and performs this fallback automatically.
 
 Create the sandbox from the fresh NemoClaw image:
 

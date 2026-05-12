@@ -17,6 +17,7 @@ RUN_ONBOARD=1
 FORCE_ONBOARD=0
 START_FORWARD=1
 WAIT_SECONDS="${APP_FACTORY_READY_TIMEOUT:-900}"
+ONBOARD_TIMEOUT="${APP_FACTORY_ONBOARD_TIMEOUT:-300}"
 
 usage() {
   cat <<EOF
@@ -32,6 +33,9 @@ Options:
   --app-port PORT      Sandbox app port. Default: $APP_PORT
   --bind HOST          Host bind address. Default: $HOST_BIND
   --gateway NAME       OpenShell gateway name. Default: $GATEWAY
+  --onboard-timeout SEC
+                       Max seconds to let NemoClaw onboard wait before using
+                       the OpenShell fallback. Default: $ONBOARD_TIMEOUT
   --skip-ollama-install
                        Do not install Ollama if the ollama command is missing.
   --skip-model-pull    Do not pull the Ollama model if it is missing.
@@ -48,6 +52,7 @@ Environment overrides:
   APP_FACTORY_BIND_HOST
   APP_FACTORY_INSTALL_OLLAMA
   APP_FACTORY_READY_TIMEOUT
+  APP_FACTORY_ONBOARD_TIMEOUT
 EOF
 }
 
@@ -88,6 +93,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --gateway)
       GATEWAY="${2:?missing gateway name}"
+      shift
+      ;;
+    --onboard-timeout)
+      ONBOARD_TIMEOUT="${2:?missing timeout seconds}"
       shift
       ;;
     --skip-ollama-install)
@@ -193,6 +202,28 @@ stop_forward() {
   fi
 }
 
+stop_onboard_processes() {
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f '/tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh' >/dev/null 2>&1 || true
+    pkill -f 'nemoclaw onboard --fresh --non-interactive --yes-i-accept-third-party-software --yes' >/dev/null 2>&1 || true
+  fi
+}
+
+remove_sandbox_containers() {
+  while IFS= read -r container; do
+    [ -n "$container" ] || continue
+    docker rm -f "$container" >/dev/null 2>&1 || true
+  done < <(docker ps -a --format '{{.Names}}' | grep -E "^openshell-${SANDBOX_NAME}-" || true)
+}
+
+cleanup_failed_onboard_sandbox() {
+  with_user_path
+  if command -v openshell >/dev/null 2>&1; then
+    openshell sandbox delete -g "$GATEWAY" "$SANDBOX_NAME" >/dev/null 2>&1 || true
+  fi
+  remove_sandbox_containers
+}
+
 preflight() {
   log "Checking prerequisites"
   need_cmd curl
@@ -288,18 +319,25 @@ run_onboard() {
   export NEMOCLAW_NON_INTERACTIVE=1
   export NEMOCLAW_YES=1
   export NEMOCLAW_LOCAL_INFERENCE_TIMEOUT="${NEMOCLAW_LOCAL_INFERENCE_TIMEOUT:-300}"
-  export NEMOCLAW_SANDBOX_READY_TIMEOUT="${NEMOCLAW_SANDBOX_READY_TIMEOUT:-900}"
+  export NEMOCLAW_SANDBOX_READY_TIMEOUT="${NEMOCLAW_SANDBOX_READY_TIMEOUT:-120}"
 
   curl -fsSL https://www.nvidia.com/nemoclaw.sh -o /tmp/nemoclaw.sh
 
   set +e
-  bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --kill-after=30s "${ONBOARD_TIMEOUT}s" \
+      bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
+  else
+    bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
+  fi
   local status=$?
   set -e
 
   if [ "$status" -ne 0 ]; then
     warn "NemoClaw onboarding exited with status $status."
     warn "Continuing because gateway/inference setup may have completed and the sandbox can be created from the fresh image."
+    stop_onboard_processes
+    cleanup_failed_onboard_sandbox
   fi
 }
 
@@ -318,6 +356,7 @@ ensure_sandbox() {
 
   log "Creating OpenShell sandbox: $SANDBOX_NAME"
   openshell sandbox delete -g "$GATEWAY" "$SANDBOX_NAME" >/dev/null 2>&1 || true
+  remove_sandbox_containers
 
   nohup openshell sandbox create -g "$GATEWAY" \
     --name "$SANDBOX_NAME" \
