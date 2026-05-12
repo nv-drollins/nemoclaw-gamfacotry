@@ -32,12 +32,13 @@ browser
 - NVIDIA driver and container GPU support
 - Python 3.11 or newer inside the sandbox
 - Ollama with `qwen3-coder:30b`, or network access so the setup script can install/pull it
+  and pin Ollama to the Spark GPU-tested `0.22.1` release
 - NemoClaw/OpenShell installed by the setup flow below
 
 ## Quick Start
 
 Run this on the Spark. The setup script checks for Ollama, installs it if it is
-missing, starts it if needed, pulls `qwen3-coder:30b` if needed,
+missing, pins it to `0.22.1` for GB10 GPU offload, starts it if needed, pulls `qwen3-coder:30b` if needed,
 installs/configures NemoClaw/OpenShell, creates or reuses the sandbox, copies
 this app into `/sandbox/openclaw-app-factory`, starts the app in the sandbox, and
 forwards Spark port `7866` to the sandboxed server.
@@ -65,6 +66,12 @@ Common overrides:
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
 
+To override the pinned Ollama release:
+
+```bash
+APP_FACTORY_OLLAMA_VERSION=0.22.1 ./scripts/setup_nemoclaw_app_factory.sh
+```
+
 Stop or restart the demo after it is installed:
 
 ```bash
@@ -83,7 +90,11 @@ For a full sandbox tear-down:
 The quick-start script handles this automatically. Use these commands when you
 want to install or manage Ollama manually.
 
-On Ubuntu or the Spark host:
+On Ubuntu or the Spark host, the demo currently pins Ollama to `0.22.1` because
+newer `0.23.x` builds have been observed to fall back to CPU-only execution on
+this Spark GB10 setup.
+
+Generic Ollama install:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh

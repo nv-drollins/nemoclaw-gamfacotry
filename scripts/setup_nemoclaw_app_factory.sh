@@ -12,6 +12,7 @@ HOST_PORT="${APP_FACTORY_HOST_PORT:-7866}"
 APP_PORT="${APP_FACTORY_APP_PORT:-7866}"
 APP_SANDBOX_DIR="${APP_FACTORY_SANDBOX_DIR:-/sandbox/openclaw-app-factory}"
 INSTALL_OLLAMA="${APP_FACTORY_INSTALL_OLLAMA:-1}"
+OLLAMA_VERSION="${APP_FACTORY_OLLAMA_VERSION:-0.22.1}"
 PULL_MODEL=1
 RUN_ONBOARD=1
 FORCE_ONBOARD=0
@@ -51,6 +52,7 @@ Environment overrides:
   APP_FACTORY_HOST_PORT
   APP_FACTORY_BIND_HOST
   APP_FACTORY_INSTALL_OLLAMA
+  APP_FACTORY_OLLAMA_VERSION
   APP_FACTORY_READY_TIMEOUT
   APP_FACTORY_ONBOARD_TIMEOUT
 EOF
@@ -127,6 +129,16 @@ done
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+run_as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    die "Root privileges are required for: $*"
+  fi
 }
 
 with_user_path() {
@@ -237,7 +249,18 @@ preflight() {
 ensure_ollama_installed() {
   log "Checking Ollama installation"
   if command -v ollama >/dev/null 2>&1; then
+    local installed_version
+    installed_version="$(ollama --version 2>/dev/null | awk '{print $4}' || true)"
     ollama --version 2>/dev/null || true
+    if [ -z "$OLLAMA_VERSION" ] || [ "$installed_version" = "$OLLAMA_VERSION" ]; then
+      return 0
+    fi
+    if [ "$INSTALL_OLLAMA" = "0" ]; then
+      warn "Ollama $installed_version is installed, but this demo expects $OLLAMA_VERSION on Spark GB10 for GPU offload."
+      return 0
+    fi
+    log "Pinning Ollama to $OLLAMA_VERSION for Spark GPU offload"
+    install_pinned_ollama
     return 0
   fi
 
@@ -249,6 +272,46 @@ ensure_ollama_installed() {
   curl -fsSL https://ollama.com/install.sh | sh
   hash -r
   command -v ollama >/dev/null 2>&1 || die "Ollama installer completed, but ollama is still not on PATH."
+  install_pinned_ollama
+}
+
+install_pinned_ollama() {
+  [ -n "$OLLAMA_VERSION" ] || return 0
+  need_cmd zstd
+
+  local arch asset url archive
+  case "$(uname -m)" in
+    aarch64|arm64)
+      arch="arm64"
+      ;;
+    x86_64|amd64)
+      arch="amd64"
+      ;;
+    *)
+      die "Unsupported architecture for pinned Ollama install: $(uname -m)"
+      ;;
+  esac
+
+  asset="ollama-linux-${arch}.tar.zst"
+  url="https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/${asset}"
+  archive="/tmp/ollama-v${OLLAMA_VERSION}-${arch}.tar.zst"
+
+  log "Downloading Ollama v${OLLAMA_VERSION} (${arch})"
+  curl -fL --show-error -o "$archive" "$url"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    run_as_root systemctl stop ollama >/dev/null 2>&1 || true
+  fi
+
+  if [ -x /usr/local/bin/ollama ]; then
+    run_as_root cp -a /usr/local/bin/ollama "/usr/local/bin/ollama.backup.$(date +%Y%m%d%H%M%S)"
+  fi
+  run_as_root tar --zstd -xf "$archive" -C /usr/local
+  run_as_root chmod -R a+rX /usr/local/lib/ollama
+
+  if command -v systemctl >/dev/null 2>&1; then
+    run_as_root systemctl start ollama >/dev/null 2>&1 || true
+  fi
 }
 
 ensure_ollama_running() {
