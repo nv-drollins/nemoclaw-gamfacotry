@@ -120,6 +120,62 @@ h2 {
   font-size: 13px;
 }
 
+.telemetry {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 18px;
+}
+
+.gaugeRow {
+  min-height: 96px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.gaugeRow strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+
+.gaugeRow p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.gauge {
+  width: 72px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--green) var(--value), #2a333b 0);
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.gauge::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gauge span {
+  position: relative;
+  z-index: 1;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 900;
+}
+
 .shell {
   min-height: 100vh;
   padding: 18px;

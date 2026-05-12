@@ -20,6 +20,12 @@ const els = {
   feedback: document.querySelector("#feedback"),
   approve: document.querySelector("#approve"),
   refine: document.querySelector("#refine"),
+  gpuGauge: document.querySelector("#gpuGauge"),
+  gpuValue: document.querySelector("#gpuValue"),
+  gpuDetail: document.querySelector("#gpuDetail"),
+  memoryGauge: document.querySelector("#memoryGauge"),
+  memoryValue: document.querySelector("#memoryValue"),
+  memoryDetail: document.querySelector("#memoryDetail"),
 };
 
 function escapeHtml(value) {
@@ -103,6 +109,35 @@ function renderReview(notes, skillMd) {
   els.skillMd.textContent = skillMd || "No skill generated yet.";
 }
 
+function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.min(100, number));
+}
+
+function renderGauge(gauge, valueNode, detailNode, reading, fallbackDetail) {
+  const percent = clampPercent(reading && reading.percent);
+  if (percent === null) {
+    gauge.style.setProperty("--value", "0%");
+    valueNode.textContent = "--%";
+    detailNode.textContent = (reading && reading.detail) || fallbackDetail;
+    return;
+  }
+  gauge.style.setProperty("--value", `${percent}%`);
+  valueNode.textContent = `${Math.round(percent)}%`;
+  detailNode.textContent = fallbackDetail;
+}
+
+function renderTelemetry(data) {
+  renderGauge(els.gpuGauge, els.gpuValue, els.gpuDetail, data.gpu, "Live from nvidia-smi");
+  const memory = data.memory || {};
+  const detail =
+    memory.ok && Number.isFinite(memory.usedGiB) && Number.isFinite(memory.totalGiB)
+      ? `${memory.usedGiB} / ${memory.totalGiB} GiB used`
+      : "Memory telemetry unavailable";
+  renderGauge(els.memoryGauge, els.memoryValue, els.memoryDetail, memory, detail);
+}
+
 function render(snapshot) {
   els.status.textContent = snapshot.status;
   els.title.textContent = snapshot.title || "Generated app preview";
@@ -140,6 +175,17 @@ async function loadModels() {
   }
 }
 
+async function refreshTelemetry() {
+  try {
+    renderTelemetry(await api("/api/telemetry"));
+  } catch (error) {
+    renderTelemetry({
+      gpu: { ok: false, detail: "GPU telemetry unavailable" },
+      memory: { ok: false, detail: "Memory telemetry unavailable" },
+    });
+  }
+}
+
 els.start.addEventListener("click", async () => {
   await api("/api/start", {
     method: "POST",
@@ -173,4 +219,6 @@ els.refine.addEventListener("click", async () => {
 
 loadModels();
 refresh();
+refreshTelemetry();
 setInterval(refresh, 1000);
+setInterval(refreshTelemetry, 2500);

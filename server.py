@@ -12,6 +12,7 @@ import random
 import re
 import shutil
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -305,6 +306,72 @@ def list_models() -> dict[str, Any]:
     if MODEL_PROVIDER in {"openshell", "openai", "nemoclaw"}:
         return list_openai_models()
     return list_ollama_models()
+
+
+def first_number(value: str) -> float | None:
+    match = re.search(r"-?\d+(?:\.\d+)?", value)
+    if not match:
+        return None
+    return float(match.group(0))
+
+
+def gpu_utilization() -> dict[str, Any]:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception as exc:
+        return {"ok": False, "percent": None, "detail": str(exc)}
+
+    if result.returncode != 0:
+        return {"ok": False, "percent": None, "detail": (result.stderr or result.stdout).strip()}
+    values = [first_number(line) for line in result.stdout.splitlines()]
+    values = [value for value in values if value is not None]
+    if not values:
+        return {"ok": False, "percent": None, "detail": "GPU utilization unavailable"}
+    percent = max(0.0, min(100.0, sum(values) / len(values)))
+    return {"ok": True, "percent": round(percent, 1), "detail": "nvidia-smi"}
+
+
+def memory_consumption() -> dict[str, Any]:
+    fields: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            name, _, raw_value = line.partition(":")
+            amount = first_number(raw_value)
+            if amount is not None:
+                fields[name] = int(amount)
+    except Exception as exc:
+        return {"ok": False, "percent": None, "detail": str(exc)}
+
+    total_kb = fields.get("MemTotal", 0)
+    available_kb = fields.get("MemAvailable", fields.get("MemFree", 0))
+    if total_kb <= 0:
+        return {"ok": False, "percent": None, "detail": "Memory data unavailable"}
+    used_kb = max(0, total_kb - available_kb)
+    percent = max(0.0, min(100.0, (used_kb / total_kb) * 100))
+    return {
+        "ok": True,
+        "percent": round(percent, 1),
+        "usedGiB": round(used_kb / 1024 / 1024, 1),
+        "totalGiB": round(total_kb / 1024 / 1024, 1),
+        "detail": "/proc/meminfo",
+    }
+
+
+def system_telemetry() -> dict[str, Any]:
+    gpu = gpu_utilization()
+    memory = memory_consumption()
+    return {
+        "ok": bool(gpu["ok"] or memory["ok"]),
+        "time": utc_now(),
+        "gpu": gpu,
+        "memory": memory,
+    }
 
 
 def call_ollama(model: str, prompt: str, timeout: int = MODEL_TIMEOUT) -> dict[str, Any]:
@@ -986,6 +1053,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/models":
             self.send_json(list_models())
+            return
+        if parsed.path == "/api/telemetry":
+            self.send_json(system_telemetry())
             return
         if parsed.path == "/":
             self.serve_file(STATIC_ROOT / "index.html")

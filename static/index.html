@@ -14,6 +14,27 @@
           <h1>App Factory</h1>
         </header>
 
+        <section class="telemetry" aria-label="Spark telemetry">
+          <div class="gaugeRow">
+            <div id="gpuGauge" class="gauge" style="--value: 0%">
+              <span id="gpuValue">--%</span>
+            </div>
+            <div>
+              <strong>GPU Utilization</strong>
+              <p id="gpuDetail" class="muted">Waiting for telemetry...</p>
+            </div>
+          </div>
+          <div class="gaugeRow">
+            <div id="memoryGauge" class="gauge" style="--value: 0%">
+              <span id="memoryValue">--%</span>
+            </div>
+            <div>
+              <strong>Memory Consumption</strong>
+              <p id="memoryDetail" class="muted">Waiting for telemetry...</p>
+            </div>
+          </div>
+        </section>
+
         <label for="prompt">Prompt</label>
         <textarea id="prompt" rows="8">Build a simple web based game where a rover collects crystals, avoids hazards, and shows score, timer, and restart controls.</textarea>
 
