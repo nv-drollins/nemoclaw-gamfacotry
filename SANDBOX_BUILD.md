@@ -1,7 +1,7 @@
 # Sandboxed NemoClaw/OpenShell Build
 
-These notes describe the clean Spark build used for the App Factory demo. The
-App Factory server runs inside the OpenShell sandbox. The Spark host only keeps
+These notes describe the clean Spark build used for the Game Factory demo. The
+Game Factory server runs inside the OpenShell sandbox. The Spark host only keeps
 the local Ollama model cache and forwards `0.0.0.0:7866` to the sandbox.
 
 ## Target Shape
@@ -10,7 +10,7 @@ the local Ollama model cache and forwards `0.0.0.0:7866` to the sandbox.
 browser
   -> Spark host port 7866
   -> sandbox container port 7866
-  -> App Factory server
+  -> Game Factory server
   -> https://inference.local/v1
   -> OpenShell managed inference
   -> local Ollama qwen3-coder:30b

@@ -25,7 +25,7 @@ usage() {
 Usage: $0 [options]
 
 Install/configure NemoClaw/OpenShell for the NemoClaw Game Factory demo, then
-run the App Factory inside the sandbox and expose it on the Spark host.
+run the Game Factory inside the sandbox and expose it on the Spark host.
 
 Options:
   --sandbox NAME       Sandbox name. Default: $SANDBOX_NAME
@@ -464,7 +464,7 @@ install_app() {
   container="$(find_container)"
   [ -n "$container" ] || die "Could not find running sandbox container for '$SANDBOX_NAME'."
 
-  log "Installing App Factory into $container:$APP_SANDBOX_DIR"
+  log "Installing Game Factory into $container:$APP_SANDBOX_DIR"
   docker exec "$container" rm -rf "$APP_SANDBOX_DIR"
   docker exec "$container" mkdir -p "$APP_SANDBOX_DIR"
 
@@ -480,7 +480,7 @@ install_app() {
   docker exec "$container" chown -R sandbox:sandbox "$APP_SANDBOX_DIR"
   docker exec "$container" python3 -m py_compile "$APP_SANDBOX_DIR/server.py"
 
-  log "Starting App Factory inside the sandbox"
+  log "Starting Game Factory inside the sandbox"
   docker exec "$container" pkill -f "python3 server.py --host 0.0.0.0 --port ${APP_PORT}" >/dev/null 2>&1 || true
   docker exec -u sandbox -w "$APP_SANDBOX_DIR" \
     -e APP_FACTORY_PROVIDER=openshell \

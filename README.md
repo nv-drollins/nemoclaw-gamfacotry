@@ -5,14 +5,14 @@ and games from a prompt. A user enters an idea, a builder agent creates a
 self-contained `index.html`, a reviewer agent checks and refines it, and the app
 is deployed into a live browser preview for human approval or follow-up changes.
 
-The preferred demo path runs the App Factory server inside a NemoClaw/OpenShell
+The preferred demo path runs the Game Factory server inside a NemoClaw/OpenShell
 sandbox and routes model calls through OpenShell managed inference:
 
 ```text
 browser
   -> Spark host port 7866
   -> OpenShell sandbox
-  -> App Factory server
+  -> Game Factory server
   -> https://inference.local/v1
   -> local Ollama qwen3-coder:30b
 ```
@@ -179,7 +179,7 @@ http://<spark-ip>:7866
 
 The quick-start script wraps these steps. Use the manual flow when you want to
 modify the installation, debug the sandbox, or run each phase by hand. The
-demo-ready path runs the App Factory code inside the OpenShell sandbox. The
+demo-ready path runs the Game Factory code inside the OpenShell sandbox. The
 Spark host only forwards the browser port.
 
 Clone the repo on the Spark:

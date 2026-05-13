@@ -3,15 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenClaw App Factory</title>
+    <title>OpenClaw Game Factory</title>
+    <link rel="icon" href="/Nvidia.ico" type="image/x-icon">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="shell">
       <section class="left">
         <header>
-          <p class="eyebrow">NemoClaw / OpenClaw style</p>
-          <h1>App Factory</h1>
+          <p class="eyebrow">NemoClaw / OpenClaw</p>
+          <h1>Game Factory</h1>
         </header>
 
         <section class="telemetry" aria-label="Spark telemetry">
@@ -45,7 +46,7 @@
         <p id="modelStatus" class="muted">Checking local models...</p>
 
         <div class="actions">
-          <button id="start" class="primary">Generate App</button>
+          <button id="start" class="primary">Generate Game</button>
           <button id="reset">Random Game</button>
         </div>
 
@@ -58,7 +59,7 @@
 
         <section id="humanPanel" class="human hidden">
           <h2>Human Check</h2>
-          <textarea id="feedback" rows="4" placeholder="Add refinement notes, or approve the current app."></textarea>
+          <textarea id="feedback" rows="4" placeholder="Add refinement notes, or approve the current game."></textarea>
           <div class="actions">
             <button id="approve" class="primary">Approve Final</button>
             <button id="refine">Refine</button>
@@ -70,12 +71,12 @@
         <div class="previewHeader">
           <div>
             <p id="status" class="eyebrow">idle</p>
-            <h2 id="title">Generated app preview</h2>
+            <h2 id="title">Generated game preview</h2>
           </div>
           <a id="openResult" class="hidden" target="_blank" rel="noreferrer">Open</a>
         </div>
-        <div id="emptyPreview" class="empty">The generated application will appear here.</div>
-        <iframe id="preview" class="hidden" title="Generated application" sandbox="allow-scripts"></iframe>
+        <div id="emptyPreview" class="empty">The generated game will appear here.</div>
+        <iframe id="preview" class="hidden" title="Generated game" sandbox="allow-scripts"></iframe>
       </section>
 
       <section class="bottom">

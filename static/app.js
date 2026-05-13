@@ -95,7 +95,7 @@ function renderResult(result) {
   els.preview.classList.remove("hidden");
   els.openResult.classList.remove("hidden");
   els.openResult.href = result.url;
-  els.openResult.textContent = "Open App";
+  els.openResult.textContent = "Open Game";
   if (state.latestResultUrl !== result.url) {
     state.latestResultUrl = result.url;
     els.preview.src = result.url;
@@ -140,7 +140,7 @@ function renderTelemetry(data) {
 
 function render(snapshot) {
   els.status.textContent = snapshot.status;
-  els.title.textContent = snapshot.title || "Generated app preview";
+  els.title.textContent = snapshot.title || "Generated game preview";
   if (document.activeElement !== els.prompt && snapshot.status !== "running") {
     els.prompt.value = snapshot.prompt || els.prompt.value;
   }

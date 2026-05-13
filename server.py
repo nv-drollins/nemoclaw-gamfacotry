@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flexible local-model app factory demo."""
+"""Flexible local-model game factory demo."""
 
 from __future__ import annotations
 
@@ -472,7 +472,7 @@ def builder_prompt(
 ) -> str:
     feedback_text = "\n".join(f"- {item}" for item in feedback) or "- None"
     if current_html:
-        return f"""You are the Builder agent in a local NemoClaw/OpenClaw-style app factory demo.
+        return f"""You are the Builder agent in a local NemoClaw/OpenClaw game factory demo.
 
 Revise the existing deployed web app. Do not restart from the original idea unless the human explicitly asks for a rebuild.
 
@@ -516,7 +516,7 @@ HTML:
 ```
 """
 
-    return f"""You are the Builder agent in a local NemoClaw/OpenClaw-style app factory demo.
+    return f"""You are the Builder agent in a local NemoClaw/OpenClaw game factory demo.
 
 Create one small, polished, self-contained web application from the user's prompt.
 
@@ -553,7 +553,7 @@ HTML:
 
 
 def reviewer_prompt(user_prompt: str, title: str, summary: str, app_html: str) -> str:
-    return f"""You are the Reviewer agent in a local app factory demo.
+    return f"""You are the Reviewer agent in a local game factory demo.
 
 Review and refine the Builder's single-file web app. Improve obvious issues:
 - broken layout
@@ -1018,7 +1018,7 @@ def run_generation(user_prompt: str, model: str, refinement: str = "", smoke_tes
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "OpenClawAppFactory/1.0"
+    server_version = "OpenClawGameFactory/1.0"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -1166,17 +1166,17 @@ def run_server(host: str, port: int) -> None:
     STATIC_ROOT.mkdir(parents=True, exist_ok=True)
     RUNS_ROOT.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), Handler)
-    print(f"OpenClaw app factory listening on http://{host}:{port}", flush=True)
+    print(f"OpenClaw game factory listening on http://{host}:{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping app factory.", flush=True)
+        print("\nStopping game factory.", flush=True)
     finally:
         server.server_close()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the OpenClaw App Factory demo.")
+    parser = argparse.ArgumentParser(description="Run the OpenClaw Game Factory demo.")
     parser.add_argument("--host", default=os.environ.get("APP_FACTORY_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("APP_FACTORY_PORT", "7866")))
     parser.add_argument("--model", default=DEFAULT_MODEL)

@@ -93,7 +93,7 @@ stop_app_server() {
   local container
   while IFS= read -r container; do
     [ -n "$container" ] || continue
-    log "Stopping App Factory in $container"
+    log "Stopping Game Factory in $container"
     docker exec "$container" pkill -f "python3 server.py --host 0.0.0.0 --port ${APP_PORT}" >/dev/null 2>&1 || true
   done < <(find_containers)
 }
