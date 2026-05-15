@@ -265,6 +265,11 @@ reset_stale_gateway_state() {
     docker rm -f "openshell-cluster-${GATEWAY}" >/dev/null 2>&1 || true
   fi
 
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "${HOME}/.local/bin/openshell-gateway" >/dev/null 2>&1 || true
+    pkill -f 'openshell-gateway' >/dev/null 2>&1 || true
+  fi
+
   cleanup_failed_onboard_sandbox
 }
 
