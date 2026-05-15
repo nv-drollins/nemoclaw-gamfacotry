@@ -245,6 +245,13 @@ onboard_log_needs_gateway_reset() {
     "$ONBOARD_LOG"
 }
 
+onboard_log_needs_ollama_systemd_repair() {
+  [ -f "$ONBOARD_LOG" ] || return 1
+  grep -Eq \
+    'Failed to inspect existing Ollama systemd override|Refusing to continue because preserving existing Ollama settings is required' \
+    "$ONBOARD_LOG"
+}
+
 reset_stale_gateway_state() {
   with_user_path
   warn "Resetting stale NemoClaw/OpenShell gateway state, then retrying GPU onboarding."
@@ -392,6 +399,30 @@ ensure_ollama() {
   ensure_ollama_running
 }
 
+ensure_ollama_systemd_loopback() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl list-unit-files ollama.service >/dev/null 2>&1 || return 0
+
+  log "Ensuring Ollama systemd loopback override for NemoClaw"
+  run_as_root mkdir -p /etc/systemd/system/ollama.service.d
+  run_as_root tee /etc/systemd/system/ollama.service.d/90-app-factory-loopback.conf >/dev/null <<'EOF'
+[Service]
+Environment="OLLAMA_HOST=127.0.0.1:11434"
+EOF
+
+  run_as_root systemctl daemon-reload >/dev/null 2>&1 || true
+  run_as_root systemctl restart ollama >/dev/null 2>&1 || true
+
+  for _ in $(seq 1 30); do
+    if ollama_api_ready; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  warn "Ollama did not respond after applying the loopback override. NemoClaw may still fail to configure inference."
+}
+
 ensure_model() {
   log "Checking Ollama model: $MODEL"
   if ollama_has_model; then
@@ -462,6 +493,22 @@ run_onboard() {
     if onboard_log_needs_gateway_reset; then
       reset_stale_gateway_state
       log "Retrying NemoClaw onboarding after stale gateway cleanup"
+
+      set +e
+      run_onboard_installer
+      status=$?
+      set -e
+
+      if [ "$status" -ne 0 ]; then
+        warn "NemoClaw onboarding retry exited with status $status."
+        stop_onboard_processes
+        cleanup_failed_onboard_sandbox
+      fi
+    fi
+
+    if [ "$status" -ne 0 ] && onboard_log_needs_ollama_systemd_repair; then
+      ensure_ollama_systemd_loopback
+      log "Retrying NemoClaw onboarding after Ollama systemd override repair"
 
       set +e
       run_onboard_installer
@@ -610,6 +657,7 @@ print_summary() {
 main() {
   preflight
   ensure_ollama
+  ensure_ollama_systemd_loopback
   ensure_model
   run_onboard
   ensure_sandbox

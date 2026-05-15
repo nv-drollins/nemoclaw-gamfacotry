@@ -120,6 +120,19 @@ docker rm -f openshell-cluster-nemoclaw 2>/dev/null || true
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
 
+If onboarding reports:
+
+```text
+Failed to inspect existing Ollama systemd override.
+Refusing to continue because preserving existing Ollama settings is required.
+```
+
+`--skip-ollama-install` is not enough by itself, because this failure happens
+inside NemoClaw onboarding after Ollama has already been found. Pull the latest
+repo and rerun the setup script. The script now writes a small systemd drop-in
+for `OLLAMA_HOST=127.0.0.1:11434`, reloads/restarts Ollama, and retries
+onboarding if NemoClaw still reports the inspection error.
+
 ## Ollama Details
 
 The quick-start script handles this automatically. Use these commands when you
