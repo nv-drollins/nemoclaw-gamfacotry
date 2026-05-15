@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Installs Docker Engine from Docker's Ubuntu apt repository, then installs and
 # configures the NVIDIA Container Toolkit for Docker.
 #
@@ -234,7 +236,7 @@ main() {
 
   log "Installing for user: ${USER}"
   log "Requesting sudo once up front. You may be prompted for your password."
-  sudo -v
+  bash "$SCRIPT_DIR/ensure-sudo.sh"
 
   install_docker_engine
   configure_docker_group

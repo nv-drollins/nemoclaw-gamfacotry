@@ -691,6 +691,7 @@ print_summary() {
 
 main() {
   preflight
+  bash "$SCRIPT_DIR/ensure-sudo.sh"
   ensure_ollama
   ensure_ollama_systemd_loopback
   ensure_model
