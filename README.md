@@ -35,6 +35,20 @@ browser
   and pin Ollama to the Spark GPU-tested `0.22.1` release
 - NemoClaw/OpenShell installed by the setup flow below
 
+## Hardware Notes
+
+The demo was originally validated on the NVIDIA Spark/GB10 path. The setup
+script is written for Linux hosts with Docker and NVIDIA container GPU support,
+and its Ollama installer selects either `arm64` or `amd64` packages based on the
+host CPU architecture. x86 workstations with RTX PRO Blackwell GPUs should use
+the same NemoClaw/OpenShell flow, provided Docker CDI or NVIDIA container GPU
+passthrough is healthy.
+
+On fresh x86/RTX PRO Blackwell testing, the main failure mode observed was stale
+NemoClaw gateway state from an earlier non-GPU gateway, not an x86-specific app
+issue. The setup script detects that onboarding message, runs the NemoClaw
+gateway cleanup, and retries GPU onboarding once.
+
 ## Quick Start
 
 Run this on the Spark. The setup script checks for Ollama, installs it if it is
@@ -83,6 +97,27 @@ For a full sandbox tear-down:
 
 ```bash
 ./stop.sh --delete-sandbox
+```
+
+## Troubleshooting
+
+If onboarding reports:
+
+```text
+Existing gateway was started without GPU passthrough.
+Clear the stale gateway state and re-onboard with GPU enabled:
+  nemoclaw uninstall && nemoclaw onboard --gpu
+```
+
+pull the latest repo and rerun the quick-start script. The script now captures
+the onboarding log, runs the gateway cleanup, and retries once automatically.
+To do the cleanup manually:
+
+```bash
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+nemoclaw uninstall --yes || true
+docker rm -f openshell-cluster-nemoclaw 2>/dev/null || true
+./scripts/setup_nemoclaw_app_factory.sh --force-onboard
 ```
 
 ## Ollama Details

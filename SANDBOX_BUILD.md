@@ -91,6 +91,12 @@ the relative `nemoclaw-start` command. The fresh image was valid; creating the
 sandbox with the absolute startup path worked. The quick-start script now caps
 the onboarding wait and performs this fallback automatically.
 
+On x86/RTX PRO Blackwell hosts, a prior non-GPU OpenShell gateway may cause
+NemoClaw onboarding to stop before it creates the `openshell/sandbox-from`
+image. The quick-start script detects the "Existing gateway was started without
+GPU passthrough" onboarding message, runs `nemoclaw uninstall --yes`, removes
+the stale gateway container, and retries onboarding once.
+
 ## Create The Sandbox
 
 ```bash

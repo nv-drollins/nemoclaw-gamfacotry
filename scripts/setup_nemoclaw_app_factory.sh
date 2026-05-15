@@ -19,6 +19,7 @@ FORCE_ONBOARD=0
 START_FORWARD=1
 WAIT_SECONDS="${APP_FACTORY_READY_TIMEOUT:-900}"
 ONBOARD_TIMEOUT="${APP_FACTORY_ONBOARD_TIMEOUT:-300}"
+ONBOARD_LOG="${APP_FACTORY_ONBOARD_LOG:-/tmp/app-factory-nemoclaw-onboard.log}"
 
 usage() {
   cat <<EOF
@@ -55,6 +56,7 @@ Environment overrides:
   APP_FACTORY_OLLAMA_VERSION
   APP_FACTORY_READY_TIMEOUT
   APP_FACTORY_ONBOARD_TIMEOUT
+  APP_FACTORY_ONBOARD_LOG
 EOF
 }
 
@@ -236,6 +238,29 @@ cleanup_failed_onboard_sandbox() {
   remove_sandbox_containers
 }
 
+onboard_log_needs_gateway_reset() {
+  [ -f "$ONBOARD_LOG" ] || return 1
+  grep -Eq \
+    'Existing gateway was started without GPU passthrough|Clear the stale gateway state|nemoclaw uninstall && nemoclaw onboard --gpu' \
+    "$ONBOARD_LOG"
+}
+
+reset_stale_gateway_state() {
+  with_user_path
+  warn "Resetting stale NemoClaw/OpenShell gateway state, then retrying GPU onboarding."
+
+  if command -v nemoclaw >/dev/null 2>&1; then
+    nemoclaw uninstall --yes >/tmp/app-factory-nemoclaw-uninstall.log 2>&1 || \
+      warn "nemoclaw uninstall did not complete cleanly; continuing cleanup."
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    docker rm -f "openshell-cluster-${GATEWAY}" >/dev/null 2>&1 || true
+  fi
+
+  cleanup_failed_onboard_sandbox
+}
+
 preflight() {
   log "Checking prerequisites"
   need_cmd curl
@@ -381,6 +406,25 @@ ensure_model() {
   ollama pull "$MODEL"
 }
 
+run_onboard_installer() {
+  rm -f "$ONBOARD_LOG"
+
+  set +e
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --kill-after=30s "${ONBOARD_TIMEOUT}s" \
+      bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh \
+      2>&1 | tee "$ONBOARD_LOG"
+    local status=${PIPESTATUS[0]}
+  else
+    bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh \
+      2>&1 | tee "$ONBOARD_LOG"
+    local status=${PIPESTATUS[0]}
+  fi
+  set -e
+
+  return "$status"
+}
+
 run_onboard() {
   if [ "$RUN_ONBOARD" -ne 1 ]; then
     log "Skipping NemoClaw onboarding"
@@ -405,21 +449,40 @@ run_onboard() {
 
   curl -fsSL https://www.nvidia.com/nemoclaw.sh -o /tmp/nemoclaw.sh
 
+  local status=0
   set +e
-  if command -v timeout >/dev/null 2>&1; then
-    timeout --kill-after=30s "${ONBOARD_TIMEOUT}s" \
-      bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
-  else
-    bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh
-  fi
-  local status=$?
+  run_onboard_installer
+  status=$?
   set -e
 
   if [ "$status" -ne 0 ]; then
     warn "NemoClaw onboarding exited with status $status."
-    warn "Continuing because gateway/inference setup may have completed and the sandbox can be created from the fresh image."
     stop_onboard_processes
     cleanup_failed_onboard_sandbox
+
+    if onboard_log_needs_gateway_reset; then
+      reset_stale_gateway_state
+      log "Retrying NemoClaw onboarding after stale gateway cleanup"
+
+      set +e
+      run_onboard_installer
+      status=$?
+      set -e
+
+      if [ "$status" -ne 0 ]; then
+        warn "NemoClaw onboarding retry exited with status $status."
+        stop_onboard_processes
+        cleanup_failed_onboard_sandbox
+      fi
+    fi
+
+    if [ "$status" -ne 0 ]; then
+      if [ -n "$(latest_sandbox_image)" ]; then
+        warn "Continuing because gateway/inference setup created a usable sandbox image."
+      else
+        die "NemoClaw onboarding failed before creating an openshell/sandbox-from image. See $ONBOARD_LOG."
+      fi
+    fi
   fi
 }
 
