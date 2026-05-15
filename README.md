@@ -35,6 +35,22 @@ browser
   and pin Ollama to the Spark GPU-tested `0.22.1` release
 - NemoClaw/OpenShell installed by the setup flow below
 
+### Configure Docker GPU runtime
+
+DGX Spark systems may include the NVIDIA Container Toolkit out of the box, but
+Docker still needs the NVIDIA runtime configured:
+
+```bash
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Optional verification:
+
+```bash
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
+```
+
 ## Hardware Notes
 
 The demo was originally validated on the NVIDIA Spark/GB10 path. The setup
