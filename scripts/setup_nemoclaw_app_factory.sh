@@ -640,11 +640,22 @@ start_forward() {
     return 0
   fi
 
-  local container container_ip pid_file
+  local container container_ip network_mode pid_file
   container="$(find_container)"
   [ -n "$container" ] || die "Could not find running sandbox container for '$SANDBOX_NAME'."
 
+  network_mode="$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$container" 2>/dev/null || true)"
+  if [ "$network_mode" = "host" ] && [ "$HOST_PORT" = "$APP_PORT" ]; then
+    log "Sandbox uses host networking; ${HOST_BIND}:${HOST_PORT} is already served by the sandboxed app"
+    stop_forward
+    curl -sS --max-time 10 "http://127.0.0.1:${HOST_PORT}/api/models" >/dev/null
+    return 0
+  fi
+
   container_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container")"
+  if [ -z "$container_ip" ] && [ "$network_mode" = "host" ]; then
+    container_ip="127.0.0.1"
+  fi
   [ -n "$container_ip" ] || die "Could not resolve sandbox container IP."
 
   log "Forwarding ${HOST_BIND}:${HOST_PORT} -> ${container_ip}:${APP_PORT}"
