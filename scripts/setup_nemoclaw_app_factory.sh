@@ -403,6 +403,13 @@ ensure_ollama_systemd_loopback() {
   command -v systemctl >/dev/null 2>&1 || return 0
   systemctl list-unit-files ollama.service >/dev/null 2>&1 || return 0
 
+  local current_env
+  current_env="$(systemctl show ollama --property=Environment --value 2>/dev/null || true)"
+  if printf '%s\n' "$current_env" | grep -q 'OLLAMA_HOST=127\.0\.0\.1:11434'; then
+    log "Ollama systemd loopback override is already active"
+    return 0
+  fi
+
   log "Ensuring Ollama systemd loopback override for NemoClaw"
   run_as_root mkdir -p /etc/systemd/system/ollama.service.d
   run_as_root tee /etc/systemd/system/ollama.service.d/90-app-factory-loopback.conf >/dev/null <<'EOF'
