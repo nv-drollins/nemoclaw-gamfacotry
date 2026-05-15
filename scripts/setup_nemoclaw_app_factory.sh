@@ -18,7 +18,7 @@ RUN_ONBOARD=1
 FORCE_ONBOARD=0
 START_FORWARD=1
 WAIT_SECONDS="${APP_FACTORY_READY_TIMEOUT:-900}"
-ONBOARD_TIMEOUT="${APP_FACTORY_ONBOARD_TIMEOUT:-300}"
+ONBOARD_TIMEOUT="${APP_FACTORY_ONBOARD_TIMEOUT:-900}"
 ONBOARD_LOG="${APP_FACTORY_ONBOARD_LOG:-/tmp/app-factory-nemoclaw-onboard.log}"
 
 usage() {
@@ -488,6 +488,10 @@ run_onboard() {
   if [ "$status" -ne 0 ]; then
     warn "NemoClaw onboarding exited with status $status."
     stop_onboard_processes
+    if sandbox_ready; then
+      warn "NemoClaw onboarding did not exit cleanly, but the sandbox is Ready. Reusing the NemoClaw-created sandbox."
+      return 0
+    fi
     cleanup_failed_onboard_sandbox
 
     if onboard_log_needs_gateway_reset; then
@@ -502,6 +506,10 @@ run_onboard() {
       if [ "$status" -ne 0 ]; then
         warn "NemoClaw onboarding retry exited with status $status."
         stop_onboard_processes
+        if sandbox_ready; then
+          warn "NemoClaw onboarding retry did not exit cleanly, but the sandbox is Ready. Reusing the NemoClaw-created sandbox."
+          return 0
+        fi
         cleanup_failed_onboard_sandbox
       fi
     fi
@@ -518,6 +526,10 @@ run_onboard() {
       if [ "$status" -ne 0 ]; then
         warn "NemoClaw onboarding retry exited with status $status."
         stop_onboard_processes
+        if sandbox_ready; then
+          warn "NemoClaw onboarding retry did not exit cleanly, but the sandbox is Ready. Reusing the NemoClaw-created sandbox."
+          return 0
+        fi
         cleanup_failed_onboard_sandbox
       fi
     fi

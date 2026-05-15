@@ -32,7 +32,7 @@ Useful overrides:
 ```bash
 ./scripts/setup_nemoclaw_app_factory.sh --sandbox app-factory-agent --model qwen3-coder:30b
 ./scripts/setup_nemoclaw_app_factory.sh --host-port 7866
-./scripts/setup_nemoclaw_app_factory.sh --onboard-timeout 300
+./scripts/setup_nemoclaw_app_factory.sh --onboard-timeout 900
 ./scripts/setup_nemoclaw_app_factory.sh --skip-ollama-install
 ./scripts/setup_nemoclaw_app_factory.sh --skip-onboard
 ./scripts/setup_nemoclaw_app_factory.sh --force-onboard
