@@ -408,19 +408,18 @@ ensure_model() {
 
 run_onboard_installer() {
   rm -f "$ONBOARD_LOG"
+  local status=0
 
-  set +e
   if command -v timeout >/dev/null 2>&1; then
     timeout --kill-after=30s "${ONBOARD_TIMEOUT}s" \
       bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh \
       2>&1 | tee "$ONBOARD_LOG"
-    local status=${PIPESTATUS[0]}
+    status=${PIPESTATUS[0]}
   else
     bash /tmp/nemoclaw.sh --non-interactive --yes-i-accept-third-party-software --fresh \
       2>&1 | tee "$ONBOARD_LOG"
-    local status=${PIPESTATUS[0]}
+    status=${PIPESTATUS[0]}
   fi
-  set -e
 
   return "$status"
 }
