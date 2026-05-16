@@ -18,6 +18,7 @@ RUN_ONBOARD=1
 FORCE_ONBOARD=0
 START_FORWARD=1
 WAIT_SECONDS="${APP_FACTORY_READY_TIMEOUT:-900}"
+APP_READY_TIMEOUT="${APP_FACTORY_APP_READY_TIMEOUT:-60}"
 ONBOARD_TIMEOUT="${APP_FACTORY_ONBOARD_TIMEOUT:-900}"
 ONBOARD_LOG="${APP_FACTORY_ONBOARD_LOG:-/tmp/app-factory-nemoclaw-onboard.log}"
 
@@ -55,6 +56,7 @@ Environment overrides:
   APP_FACTORY_INSTALL_OLLAMA
   APP_FACTORY_OLLAMA_VERSION
   APP_FACTORY_READY_TIMEOUT
+  APP_FACTORY_APP_READY_TIMEOUT
   APP_FACTORY_ONBOARD_TIMEOUT
   APP_FACTORY_ONBOARD_LOG
 EOF
@@ -592,6 +594,39 @@ ensure_sandbox() {
   openshell sandbox list -g "$GATEWAY"
 }
 
+wait_for_sandbox_app() {
+  local container="$1"
+  local elapsed=0
+
+  while [ "$elapsed" -lt "$APP_READY_TIMEOUT" ]; do
+    if docker exec "$container" \
+      curl -sS --max-time 10 "http://127.0.0.1:${APP_PORT}/api/models" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  docker exec "$container" sh -lc \
+    "tail -80 '${APP_SANDBOX_DIR}/app-factory.log' 2>/dev/null || true" >&2 || true
+  die "Game Factory did not become ready inside the sandbox within ${APP_READY_TIMEOUT}s."
+}
+
+wait_for_host_app() {
+  local elapsed=0
+
+  while [ "$elapsed" -lt "$APP_READY_TIMEOUT" ]; do
+    if curl -sS --max-time 10 "http://127.0.0.1:${HOST_PORT}/api/models" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  tail -80 /tmp/app_factory_forward.log >&2 2>/dev/null || true
+  die "Game Factory host forward did not become ready within ${APP_READY_TIMEOUT}s."
+}
+
 install_app() {
   local container
   container="$(find_container)"
@@ -631,7 +666,7 @@ install_app() {
     "$container" \
     /bin/sh -c "nohup python3 server.py --host 0.0.0.0 --port ${APP_PORT} > app-factory.log 2>&1 &"
 
-  docker exec "$container" curl -sS --max-time 10 "http://127.0.0.1:${APP_PORT}/api/models" >/dev/null
+  wait_for_sandbox_app "$container"
 }
 
 start_forward() {
@@ -671,7 +706,7 @@ start_forward() {
   echo "$!" >"$pid_file"
 
   sleep 1
-  curl -sS --max-time 10 "http://127.0.0.1:${HOST_PORT}/api/models" >/dev/null
+  wait_for_host_app
 }
 
 print_summary() {
